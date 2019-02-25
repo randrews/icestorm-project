@@ -1,3 +1,5 @@
+`include "VgaSync.v"
+
 module Counter (
                 // Clock
                 input i_Clk,
@@ -29,13 +31,17 @@ module Counter (
    assign o_LED_4 = 0;
 
    wire                active;
-   wire [9:0]          pixel_row;
-   wire [9:0]          pixel_col;
+   wire [9:0]           pixel_row;
+   wire [9:0]           pixel_col;
 
-   wire [2:0]          red = { o_VGA_Red_2, o_VGA_Red_1, o_VGA_Red_0 };
-   wire [2:0]          green = { o_VGA_Grn_2, o_VGA_Grn_1, o_VGA_Grn_0 };
-   wire [2:0]          blue = { o_VGA_Blu_2, o_VGA_Blu_1, o_VGA_Blu_0 };
-   
+   reg [2:0]           red = 0;
+   reg [2:0]           green = 0;
+   reg [2:0]           blue = 0;
+
+   assign { o_VGA_Red_2, o_VGA_Red_1, o_VGA_Red_0 } = red;
+   assign { o_VGA_Grn_2, o_VGA_Grn_1, o_VGA_Grn_0 } = green;
+   assign { o_VGA_Blu_2, o_VGA_Blu_1, o_VGA_Blu_0 } = blue;
+
    // Generate VGA sync signals
    VgaSync sync (
                  .clk(i_Clk),
@@ -46,129 +52,102 @@ module Counter (
                  .active_col(pixel_col)
                  );
 
+   // Video RAM
+   wire [3:0]          pixel_color;
+         
+   RAM_async vram (
+              .clk(i_Clk),
+              .addr({ pixel_row[6:0], pixel_col[6:0] }),
+              .din(4'b1111),
+              .dout(pixel_color),
+              .we(0)
+              );
+
+   // Draw pixels
    always @(posedge i_Clk) begin
-      if (active)
-        begin
-           if (pixel_col < 200)
-             begin
-                blue <= 7;
-                if (pixel_col > 50 && pixel_col < 150 && pixel_row > 190 && pixel_row < 290)
-                  begin
-                     red <= 7;
-                     green <= 7;
-                  end
-                else
-                  begin
-                     red <= 0;
-                     green <= 0;
-                  end
-             end
-           else
-             begin
-                red <= 7;
-                if (pixel_row < 240)
-                  begin
-                     green <= 7;
-                     blue <= 7;
-                  end
-                else
-                  begin
-                     green <= 0;
-                     blue <= 0;
-                  end
-             end
-        end // if (active)
-      else
-        begin
-           red <= 0;
-           blue <= 0;
-           green <= 0;
-        end
+      if (active) begin
+         if (pixel_row < 128 && pixel_col < 128) begin
+            if (pixel_color[3]) red <= 7;
+            else red <= 0;
+            if (pixel_color[2]) green <= 7;
+            else green <= 0;
+            if (pixel_color[1]) blue <= 7;
+            else blue <= 0;
+         end else begin
+            red <= 3;
+            green <= 3;
+            blue <= 5;
+         end
+      end else begin
+         red <= 0;
+         green <= 0;
+         blue <= 0;
+      end
    end
 endmodule
 
-module VgaSync (
-                input            clk,
-                output           hsync,
-                output           vsync,
-                output           active, 
-                output reg [9:0] active_row = 0,
-                output reg [9:0] active_col = 0
-                );
+/* -----\/----- EXCLUDED -----\/-----
+            if (pixel_color == 4'b1111) green <= 7;
+            else green <= 0;
+            red <= 0;
+            blue <= 0;
 
-   parameter TOTAL_COLS = 800;
-   parameter TOTAL_ROWS = 525;
-   parameter ACTIVE_COLS = 640;
-   parameter ACTIVE_ROWS = 480;
+  if (pixel_color[3]) red <= 7;
+ else red <= 0;
+ if (pixel_color[2]) green <= 7;
+ else green <= 0;
+ if (pixel_color[1]) blue <= 7;
+ else blue <= 0;
+ -----/\----- EXCLUDED -----/\----- */
+/* -----\/----- EXCLUDED -----\/-----
 
-   reg [9:0]                     row = 0;
-   reg [9:0]                     col = 0;
+module Vram (
+             input        clk,
+             output [3:0] data_out,
+             input [3:0]  data_in,
+             input [13:0] address,
+             input        write
+             );
 
-   /* -----\/----- EXCLUDED -----\/-----
-    8 pixels front porch
-    96 pixels horizontal sync
-    40 pixels back porch
-    8 pixels left border
-    640 pixels video
-    8 pixels right border
-    ---
-    800 pixels total per line
-                                  
-    2 lines front porch
-    2 lines vertical sync
-    25 lines back porch
-    8 lines top border
-    480 lines video
-    8 lines bottom border
-    ---
-    525 lines total per field
-    -----/\----- EXCLUDED -----/\----- */
+   reg [3:0]                  memory [0:16383];
 
-   // Incrementing row and col
-   always @(posedge clk) begin
-      if (col == TOTAL_COLS - 1)
-        begin
-           if (row == TOTAL_ROWS - 1)
-             begin
-                row <= 0;
-                col <= 0;
-             end
-           else
-             begin
-                col <= 0;
-                row <= row + 1;
-             end
-        end
-      else
-        col <= col + 1;
-   end // always @ (posedge clk)
-
-   // hsync and vsync
-   assign hsync = (col >= 96);
-   assign vsync = (row >= 2);
-
-   // are we in the active area?
-   assign active = (col >= 96+40+8 && col < 96+40+8+640) && (row >= 2+33 && row < 2+33+480);
-
-   // Figure the actual pixel row and column
-   always @(posedge clk) begin
-      if (active)
-        begin
-           if (active_col == ACTIVE_COLS-1)
-             begin
-                if (active_row == ACTIVE_ROWS-1)
-                  begin
-                     active_row <= 0;
-                     active_col <= 0;
-                  end
-                else
-                  begin
-                     active_col <= 0;
-                     active_row <= active_row + 1;
-                  end
-             end
-           else
-             active_col <= active_col + 1;
-        end
+   initial begin
+      memory[50 + 50 * 128] <= { 1, 1, 1, 1 };
+      //memory[0 + 0 * 128] = { 1, 1, 1, 1 };
+      //memory[127 + 127 * 128] = { 1, 1, 1, 1 };
+      //memory[0 + 127 * 128] = { 1, 1, 1, 1 };
+      //memory[127 + 0 * 128] = { 1, 1, 1, 1 };
+      memory[0] <= {1, 1, 1, 1};
+      //memory[128] = {1, 1, 1, 1};
+      memory[256] <= {1, 1, 1, 1};
    end
+
+   always @(posedge clk) begin
+      if (write) begin
+         memory[address] <= data_in;
+      end
+      data_out <= memory[address];
+   end
+endmodule
+ -----/\----- EXCLUDED -----/\----- */
+
+module RAM_async(
+                 input        clk,
+                 input [13:0] addr,
+                 input [3:0]  din,
+                 output [3:0] dout,
+                 input        we
+                 );
+
+   reg [3:0]                  mem [0:16383];
+
+   initial begin
+`include "mem_init.v"
+   end
+
+   always @(posedge clk) begin
+      if (we)		// if write enabled
+        mem[addr] <= din;	// write memory from din
+   end
+   assign dout = mem[addr]; // read memory to dout (async)
 endmodule

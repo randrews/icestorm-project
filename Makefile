@@ -2,7 +2,10 @@
 
 all: main.bin
 
-%.blif: %.v
+mem_init.v: splash.rb splash.xpm
+	ruby splash.rb splash.xpm > mem_init.v
+
+%.blif: %.v *.v mem_init.v
 	yosys -p "read_verilog $<; synth_ice40 -blif $@"
 
 %.pnr: %.blif
@@ -15,4 +18,4 @@ upload: main.bin
 	iceprog main.bin
 
 clean:
-	rm -f *.bin *.pnr *.blif
+	rm -f *.bin *.pnr *.blif mem_init.v
