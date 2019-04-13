@@ -25,7 +25,8 @@ run apt-get install -y python3
 run apt-get install -y libftdi-dev
 run apt-get install -y qt5-default
 run apt-get install -y python3-dev
-run apt-get install -y libboost-dev
+run apt-get install -y libboost-all-dev
+run apt-get install -y cmake
 
 run git clone https://github.com/cliffordwolf/icestorm.git /icestorm
 workdir /icestorm
@@ -39,6 +40,12 @@ run make install
 
 run git clone https://github.com/cliffordwolf/yosys.git /yosys
 workdir /yosys
+run make -j$(nproc)
+run make install
+
+run git clone https://github.com/YosysHQ/nextpnr /nextpnr
+workdir /nextpnr
+run cmake -DARCH=ice40 -DCMAKE_BUILD_TYPE=Debug -DBUILD_PYTHON=OFF -DBUILD_GUI=OFF -DBUILD_HEAP=OFF -DICE40_HX1K_ONLY=1 .
 run make -j$(nproc)
 run make install
 
